@@ -11,7 +11,7 @@ from langchain_core.messages import HumanMessage
 
 
 # Get API key
-api_key = "AIzaSyBHlgoNaJy0fg89UtNrQFFOL1Prznd6URI"
+api_key = "Enter your Gemini API key here"
 
 # Initialize Chat Model
 chat_model = ChatGoogleGenerativeAI(api_key=api_key, model="gemini-1.5-flash")
