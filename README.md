@@ -38,17 +38,9 @@ SmartVisionAI converts images into **spoken, contextual knowledge** — eliminat
 
 ---
 
-## 🧠 Architecture / System Workflow
+## 🧠 System Workflow
 
-```mermaid
-flowchart LR
-User -->|Upload Image| Streamlit_UI
-Streamlit_UI --> AI_Engine[SmartVisionAI Engine]
-AI_Engine -->|Scene Description| GoogleGenAI[Google Generative AI]
-AI_Engine -->|Object Detection| LangChain
-AI_Engine -->|Text Extraction| TesseractOCR
-AI_Engine -->|Audio Output| Pyttsx3
-Pyttsx3 --> User
+User uploads image → System processes → Extracts objects/text → Produces scene description → Converts output into speech
 
 ---
 
@@ -78,6 +70,8 @@ Pyttsx3 --> User
 • app.py → Main app script  
 • requirements.txt → Dependencies  
 • models/ → Model configs  
+• utils/ → Utility helpers  
+• assets/ → Media/images  
 • README.md → Documentation  
 
 This layout ensures a modular and scalable codebase.
