@@ -69,7 +69,7 @@ User uploads image → System processes → Extracts objects/text → Produces s
 📁 SmartVisionAI  
 • app.py → Main app script  
 • requirements.txt → Dependencies  
-• README.md → Documentation  
+• README.md →  Documentation  
 
 This layout ensures a modular and scalable codebase.
 
