@@ -50,7 +50,7 @@ User uploads image → System processes → Extracts objects/text → Produces s
 🧠 Google Generative AI – Scene understanding  
 🔗 LangChain – AI model integration  
 📄 Tesseract OCR – Text recognition  
-🔊 Pyttsx3 – Text-to-speech engine  
+🔊 Pyttsx3 –  Text-to-speech engine  
 🌐 Streamlit – User interface  
 
 ---
