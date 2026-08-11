@@ -1,0 +1,33 @@
+# Environment / secrets
+.env
+.env.local
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+ENV/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Runtime artifacts
+*.mp3
+*.wav
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

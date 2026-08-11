@@ -1,0 +1,1 @@
+"""SmartVisionAI application package."""
