@@ -1,6 +1,8 @@
 """Tests for src.prompts.vision_prompts."""
 
 from src.prompts.vision_prompts import (
+    CONTENT_MODERATION_SYSTEM_PROMPT,
+    CONTENT_MODERATION_USER_PROMPT,
     OBJECT_DETECTION_USER_PROMPT,
     OCR_CLASSIFICATION_SYSTEM_PROMPT,
     OCR_CLASSIFICATION_USER_PROMPT_TEMPLATE,
@@ -17,6 +19,8 @@ def test_prompts_are_non_empty_strings():
         OBJECT_DETECTION_USER_PROMPT,
         OCR_CLASSIFICATION_SYSTEM_PROMPT,
         PERSONAL_ASSISTANCE_PROMPT,
+        CONTENT_MODERATION_SYSTEM_PROMPT,
+        CONTENT_MODERATION_USER_PROMPT,
     ):
         assert isinstance(prompt, str)
         assert prompt.strip()

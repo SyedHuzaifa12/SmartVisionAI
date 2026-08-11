@@ -10,14 +10,21 @@ across a codebase).
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from typing import Callable, Generic, TypeVar
 
-from src.llm.schemas import OcrClassification, SceneAnalysis
+from src.llm.schemas import ContentModerationResult, OcrClassification, SceneAnalysis
 
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+
+# Applied only before the retry (i.e. only on an already-failing path): a
+# short pause meaningfully improves the odds of the retry succeeding if the
+# root cause was transient - a rate-limit blip or a momentary API error -
+# without adding latency to the common, successful case.
+_RETRY_BACKOFF_SECONDS = 2.0
 
 
 @dataclass
@@ -27,6 +34,14 @@ class GuardrailOutcome(Generic[T]):
     value: T
     passed_validation: bool
     retried: bool
+    error_detail: str | None = None
+    """The underlying exception (type + message), if generation ever raised one.
+
+    Surfaced all the way to the Pipeline Metrics dev panel - without this,
+    a rate-limit error, a safety block, and a genuine bug all produce the
+    *identical* generic fallback text, making the real cause undiagnosable
+    from the UI alone.
+    """
 
 
 def run_with_guardrails(
@@ -35,32 +50,44 @@ def run_with_guardrails(
     fallback_factory: Callable[[], T],
     *,
     label: str = "response",
+    retry_backoff_seconds: float = _RETRY_BACKOFF_SECONDS,
 ) -> GuardrailOutcome[T]:
     """Call ``compute_fn``, validate its result, retry once, then fall back.
 
     A raised exception (e.g. a transient API error, or the model producing
     something so malformed even structured-output coercion fails) is treated
     the same as a failed validation, rather than crashing the whole feature.
+
+    ``retry_backoff_seconds`` is overridable (tests pass 0) so the production
+    default doesn't force every retry-path test to actually sleep.
     """
 
-    def _attempt() -> T | None:
+    def _attempt() -> tuple[T | None, str | None]:
         try:
-            return compute_fn()
-        except Exception:
+            return compute_fn(), None
+        except Exception as exc:  # noqa: BLE001
             logger.exception("%s raised an exception during generation", label)
-            return None
+            return None, f"{type(exc).__name__}: {exc}"
 
-    result = _attempt()
+    result, error_detail = _attempt()
     if validate_fn(result):
         return GuardrailOutcome(value=result, passed_validation=True, retried=False)
 
     logger.warning("%s failed guardrail validation - retrying once", label)
-    result = _attempt()
+    if error_detail is None:
+        error_detail = "Response failed validation (see src/guardrails/validation.py checks)."
+    if retry_backoff_seconds > 0:
+        time.sleep(retry_backoff_seconds)
+
+    result, retry_error_detail = _attempt()
     if validate_fn(result):
         return GuardrailOutcome(value=result, passed_validation=True, retried=True)
 
-    logger.error("%s failed guardrail validation after retry - using fallback", label)
-    return GuardrailOutcome(value=fallback_factory(), passed_validation=False, retried=True)
+    final_error_detail = retry_error_detail or error_detail
+    logger.error("%s failed guardrail validation after retry - using fallback (%s)", label, final_error_detail)
+    return GuardrailOutcome(
+        value=fallback_factory(), passed_validation=False, retried=True, error_detail=final_error_detail
+    )
 
 
 def validate_scene_analysis(analysis: SceneAnalysis | None) -> bool:
@@ -101,6 +128,15 @@ def validate_ocr_classification(classification: OcrClassification | None) -> boo
     return True
 
 
+def validate_content_moderation(result: ContentModerationResult | None) -> bool:
+    """Check that a ContentModerationResult has a real reason, not just a bare boolean."""
+    if result is None:
+        return False
+    if not result.reason or not result.reason.strip():
+        return False
+    return True
+
+
 def fallback_scene_analysis() -> SceneAnalysis:
     """A safe, honest degraded response used when the model output can't be trusted.
 
@@ -134,3 +170,16 @@ def fallback_ocr_classification() -> OcrClassification:
         suggested_action="Try capturing the text again with better lighting or a closer angle.",
         classification_confidence=0.0,
     )
+
+
+def fallback_content_moderation() -> ContentModerationResult:
+    """Fail *open* when the moderation check itself can't be verified.
+
+    Deliberately the opposite direction from the scene/hazard fallbacks: a
+    technical failure of this specific check (rate limit, transient error)
+    should never block an ordinary image just because a side-check glitched.
+    The main hazard-detection guardrails already handle physical safety
+    conservatively; this check exists for a different, narrower purpose
+    (explicit content), and its own failure mode shouldn't compound that.
+    """
+    return ContentModerationResult(is_inappropriate=False, reason="Moderation check could not be verified.")

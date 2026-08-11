@@ -7,10 +7,12 @@ Tesseract install - the point is to verify the guardrails -> confidence-gate
 
 from __future__ import annotations
 
+import dataclasses
+
 from PIL import Image
 
 import src.services.vision_assistant as vision_assistant
-from src.llm.schemas import OcrClassification, SceneAnalysis
+from src.llm.schemas import ContentModerationResult, OcrClassification, SceneAnalysis
 
 
 def _sample_analysis(**overrides) -> SceneAnalysis:
@@ -41,8 +43,15 @@ def test_describe_scene_returns_feature_result_with_metrics_and_evaluation(monke
 
 
 def test_describe_scene_applies_confidence_gate(monkeypatch):
+    # Confidence gating defaults to off (threshold 0.0) in production, since
+    # self-reported confidence proved unreliable in practice - so this test
+    # explicitly enables it to verify the wiring itself, independent of that
+    # production default.
     low_confidence = _sample_analysis(scene_confidence=0.05)
     monkeypatch.setattr(vision_assistant, "analyze_scene", lambda *a, **k: low_confidence)
+    monkeypatch.setattr(
+        vision_assistant, "settings", dataclasses.replace(vision_assistant.settings, scene_confidence_threshold=0.5)
+    )
 
     result = vision_assistant.describe_scene("fake_base64")
 
@@ -97,3 +106,37 @@ def test_extract_text_from_image_classifies_when_text_present(monkeypatch):
     assert result.data.classification.category == "Medicine label"
     assert result.data.low_confidence is False
     assert result.evaluation.ocr_usefulness_score is not None
+
+
+def test_moderate_image_passes_through_a_clean_result(monkeypatch):
+    monkeypatch.setattr(
+        vision_assistant,
+        "check_content_moderation",
+        lambda image_base64: ContentModerationResult(is_inappropriate=False, reason="Ordinary photo."),
+    )
+
+    result = vision_assistant.moderate_image("fake_base64")
+
+    assert result.is_inappropriate is False
+
+
+def test_moderate_image_flags_explicit_content(monkeypatch):
+    monkeypatch.setattr(
+        vision_assistant,
+        "check_content_moderation",
+        lambda image_base64: ContentModerationResult(is_inappropriate=True, reason="Contains explicit nudity."),
+    )
+
+    result = vision_assistant.moderate_image("fake_base64")
+
+    assert result.is_inappropriate is True
+
+
+def test_moderate_image_fails_open_on_persistent_failure(monkeypatch):
+    monkeypatch.setattr(vision_assistant, "check_content_moderation", lambda image_base64: None)
+
+    result = vision_assistant.moderate_image("fake_base64")
+
+    # A technical failure of the moderation check itself must never block an
+    # ordinary image - it fails open, unlike the scene/hazard guardrails.
+    assert result.is_inappropriate is False

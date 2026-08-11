@@ -1,37 +1,28 @@
-"""Offline text-to-speech synthesis via pyttsx3."""
+"""Text-to-speech synthesis via gTTS.
+
+Was previously pyttsx3 (fully offline, via the local espeak driver). Switched
+after pyttsx3's espeak driver proved unreliable on headless cloud containers:
+its callback races garbage collection there (`ReferenceError: weakly-
+referenced object no longer exists`), producing an empty/corrupt MP3 with no
+error surfaced to the app. gTTS is a lightweight, free, no-API-key wrapper
+around Google Translate's TTS endpoint - it returns audio bytes directly over
+HTTP with no local audio driver involved, so that failure mode can't occur.
+It does require outbound internet access, which Streamlit Cloud has.
+"""
 
 from __future__ import annotations
 
+import io
 import logging
-import os
-import tempfile
 
-import pyttsx3
+from gtts import gTTS
 
 logger = logging.getLogger(__name__)
 
-SPEECH_RATE = 150
-SPEECH_VOLUME = 1.0
-
 
 def synthesize_speech(text: str) -> bytes:
-    """Convert text to spoken audio and return the resulting MP3 bytes.
-
-    Each call renders to its own temporary file (instead of a single shared
-    filename) so concurrent Streamlit sessions don't overwrite one another's
-    audio output; the temp file is removed once its bytes are read.
-    """
+    """Convert text to spoken audio and return the resulting MP3 bytes."""
     logger.info("Synthesizing speech for %d characters of text", len(text))
-    fd, audio_path = tempfile.mkstemp(suffix=".mp3")
-    os.close(fd)
-    try:
-        engine = pyttsx3.init()
-        engine.setProperty("rate", SPEECH_RATE)
-        engine.setProperty("volume", SPEECH_VOLUME)
-        engine.save_to_file(text, audio_path)
-        engine.runAndWait()
-        with open(audio_path, "rb") as audio_file:
-            return audio_file.read()
-    finally:
-        if os.path.exists(audio_path):
-            os.remove(audio_path)
+    buffer = io.BytesIO()
+    gTTS(text=text, lang="en").write_to_fp(buffer)
+    return buffer.getvalue()

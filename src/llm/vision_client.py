@@ -14,17 +14,42 @@ import logging
 from functools import lru_cache
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_genai import ChatGoogleGenerativeAI, HarmBlockThreshold, HarmCategory
 
 from config import settings
-from src.llm.schemas import OcrClassification, SceneAnalysis
+from src.llm.schemas import ContentModerationResult, OcrClassification, SceneAnalysis
 from src.prompts.vision_prompts import (
+    CONTENT_MODERATION_SYSTEM_PROMPT,
+    CONTENT_MODERATION_USER_PROMPT,
     OCR_CLASSIFICATION_SYSTEM_PROMPT,
     OCR_CLASSIFICATION_USER_PROMPT_TEMPLATE,
 )
 from src.utils.image_utils import to_image_data_url
 
 logger = logging.getLogger(__name__)
+
+# Explicit content-safety thresholds for this public-facing app, rather than
+# relying on Gemini's un-configured defaults. Deliberately the *least* strict
+# blocking level (BLOCK_ONLY_HIGH) across every category: this app's own
+# hazard-detection mission needs to describe ordinary knives, vehicles, and
+# people without every such photo getting flagged as "medium" severity by
+# Gemini's classifiers. Only clearly severe/extreme content - real nudity,
+# actual weapons/bombs, graphic violence, explicit hate symbols - gets
+# blocked; everything else passes through untouched.
+#
+# Only the 4 generic categories are used - NOT the HARM_CATEGORY_IMAGE_*
+# variants. Those exist as enum members in this Python library, but the
+# actual Gemini REST API (v1beta) rejects them with a 400 INVALID_ARGUMENT
+# ("Invalid value ... HarmCategory") - confirmed against the live API, not a
+# guess. That single bug caused every request to fail regardless of image
+# content, which is what looked like "guardrails rejecting everything." The
+# generic categories already apply to multimodal (image+text) requests.
+_SAFETY_SETTINGS = {
+    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+    HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+    HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+}
 
 
 @lru_cache(maxsize=1)
@@ -33,6 +58,7 @@ def get_chat_model() -> ChatGoogleGenerativeAI:
     return ChatGoogleGenerativeAI(
         api_key=settings.gemini_api_key,
         model=settings.gemini_model,
+        safety_settings=_SAFETY_SETTINGS,
     )
 
 
@@ -96,6 +122,31 @@ def analyze_scene(image_base64: str, system_prompt: str, user_prompt: str) -> Sc
     ]
     logger.info("Invoking Gemini model=%s for structured scene analysis", settings.gemini_model)
     structured_model = get_chat_model().with_structured_output(SceneAnalysis)
+    return structured_model.invoke(messages)
+
+
+def check_content_moderation(image_base64: str) -> ContentModerationResult:
+    """Classify whether an image contains explicit/severe content (see the prompt for the exact categories).
+
+    A narrow, explicit check owned entirely by this app - not delegated to
+    Gemini's declarative ``safety_settings``, which has already been caught
+    both rejecting valid requests outright and not reliably flagging real
+    explicit content at any threshold tested.
+
+    Returns:
+        A validated ``ContentModerationResult`` instance.
+    """
+    messages = [
+        SystemMessage(content=CONTENT_MODERATION_SYSTEM_PROMPT),
+        HumanMessage(
+            content=[
+                {"type": "text", "text": CONTENT_MODERATION_USER_PROMPT},
+                {"type": "image_url", "image_url": to_image_data_url(image_base64)},
+            ]
+        ),
+    ]
+    logger.info("Invoking Gemini model=%s for content moderation", settings.gemini_model)
+    structured_model = get_chat_model().with_structured_output(ContentModerationResult)
     return structured_model.invoke(messages)
 
 

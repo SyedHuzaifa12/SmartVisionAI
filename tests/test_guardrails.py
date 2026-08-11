@@ -2,13 +2,15 @@
 
 from src.guardrails.confidence import apply_confidence_gate
 from src.guardrails.validation import (
+    fallback_content_moderation,
     fallback_ocr_classification,
     fallback_scene_analysis,
     run_with_guardrails,
+    validate_content_moderation,
     validate_ocr_classification,
     validate_scene_analysis,
 )
-from src.llm.schemas import OcrClassification, SceneAnalysis
+from src.llm.schemas import ContentModerationResult, OcrClassification, SceneAnalysis
 
 
 def _valid_analysis(**overrides):
@@ -71,11 +73,13 @@ def test_run_with_guardrails_retries_then_falls_back_on_persistent_failure():
         validate_scene_analysis,
         fallback_scene_analysis,
         label="test",
+        retry_backoff_seconds=0,
     )
 
     assert outcome.passed_validation is False
     assert outcome.retried is True
     assert outcome.value.hazard_level == "Caution"  # fallback fails safe, not "Safe"
+    assert outcome.error_detail is not None  # diagnosable, not just a generic fallback
 
 
 def test_run_with_guardrails_recovers_after_one_retry():
@@ -85,7 +89,9 @@ def test_run_with_guardrails_recovers_after_one_retry():
         attempts["count"] += 1
         return None if attempts["count"] == 1 else _valid_analysis()
 
-    outcome = run_with_guardrails(flaky_compute, validate_scene_analysis, fallback_scene_analysis, label="test")
+    outcome = run_with_guardrails(
+        flaky_compute, validate_scene_analysis, fallback_scene_analysis, label="test", retry_backoff_seconds=0
+    )
 
     assert outcome.passed_validation is True
     assert outcome.retried is True
@@ -96,16 +102,36 @@ def test_run_with_guardrails_treats_exception_as_failure():
     def raises():
         raise RuntimeError("boom")
 
-    outcome = run_with_guardrails(raises, validate_scene_analysis, fallback_scene_analysis, label="test")
+    outcome = run_with_guardrails(
+        raises, validate_scene_analysis, fallback_scene_analysis, label="test", retry_backoff_seconds=0
+    )
 
     assert outcome.passed_validation is False
     assert outcome.value.hazard_level == "Caution"
+    assert outcome.error_detail == "RuntimeError: boom"
 
 
 def test_fallback_ocr_classification_has_zero_confidence():
     fallback = fallback_ocr_classification()
     assert fallback.classification_confidence == 0.0
     assert fallback.category == "Unknown"
+
+
+def test_validate_content_moderation_rejects_missing_reason():
+    assert validate_content_moderation(ContentModerationResult(is_inappropriate=False, reason="")) is False
+
+
+def test_validate_content_moderation_accepts_valid_result():
+    result = ContentModerationResult(is_inappropriate=True, reason="Contains explicit nudity.")
+    assert validate_content_moderation(result) is True
+
+
+def test_fallback_content_moderation_fails_open():
+    # Unlike the scene/hazard fallbacks (which fail toward caution), this one
+    # must fail toward NOT blocking - a technical glitch in this side-check
+    # should never reject an ordinary image.
+    fallback = fallback_content_moderation()
+    assert fallback.is_inappropriate is False
 
 
 def test_confidence_gate_replaces_response_below_scene_threshold():

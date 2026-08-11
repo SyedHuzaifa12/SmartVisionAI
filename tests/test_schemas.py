@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from src.llm.schemas import OcrClassification, ResponseEvaluation, SceneAnalysis
+from src.llm.schemas import ContentModerationResult, OcrClassification, ResponseEvaluation, SceneAnalysis
 
 
 def _scene_kwargs(**overrides):
@@ -90,3 +90,10 @@ def test_response_evaluation_rejects_out_of_range_score():
             overall_quality_score=85,
             evaluation_notes="Invalid.",
         )
+
+
+def test_content_moderation_result_accepts_valid_data():
+    result = ContentModerationResult(is_inappropriate=False, reason="Ordinary photo, no concerns.")
+
+    assert result.is_inappropriate is False
+    assert result.reason

@@ -29,7 +29,7 @@ SCENE_ANALYSIS (Scene Understanding + Object Detection)
        not to infer safety from distance/elevation, and differentiated Scene
        Understanding (narrative-first) from Object Detection (enumeration-
        first) - previously the two features produced near-identical prose.
-  v4 (current) - Moved from prose to ``with_structured_output`` against the
+  v4 - Moved from prose to ``with_structured_output`` against the
        ``SceneAnalysis`` schema, and split each prompt into a system prompt
        (shared constraints + confidence-calibration + evidence-only hazard
        explanations) and a user prompt (feature-specific focus only). This
@@ -37,6 +37,16 @@ SCENE_ANALYSIS (Scene Understanding + Object Detection)
        (the schema does that once), shrank each prompt to just its persona
        and focus, and made room to add confidence estimation without
        bloating every prompt again.
+  v5 (current) - v4's confidence instruction ("be conservative, don't default
+       high") had no calibration anchor, and in practice the model reported
+       confidence near 0 even for clear, well-lit, unambiguous photos -
+       making the field useless to threshold against. Added concrete anchor
+       points (a clear photo should score high; only genuinely blurry/dark/
+       ambiguous images should score low) so the number reflects actual
+       image quality instead of defaulting to a blanket low value. Gating on
+       this field is disabled by default in config.py regardless (see
+       SCENE_CONFIDENCE_THRESHOLD) until this is verified to have fixed the
+       calibration in practice.
 
 OCR_CLASSIFICATION
   v1 (current) - Classifies OCR output (medicine label, menu, sign, etc.)
@@ -61,7 +71,7 @@ Hard constraints:
 - Never guess a person's identity, age, gender, or ethnicity.
 - Never reason that a scene is safe or unsafe purely because it is distant, elevated, or wide-angle - judge only from what is actually visible.
 - In hazard_explanation, state only the observable evidence that justifies your hazard_level - do not describe your reasoning process or think aloud, just the conclusion and the visible evidence for it.
-- Report scene_confidence and hazard_confidence honestly. Lower them for images that are blurry, dark, cluttered, partially framed, or ambiguous. Do not default to a high value simply because you produced an answer - overconfidence is more harmful than admitting uncertainty."""
+- Report scene_confidence and hazard_confidence based on actual image quality, not a default. A clear, well-lit, unambiguous photo where the subject and setting are obvious should score 0.8-1.0 - most ordinary photos belong here. Only score below 0.5 when the image is genuinely blurry, dark, tiny, heavily occluded, or too ambiguous to describe with any real confidence. Do not use a low score as a generic hedge - it should reflect a specific, real problem with the image."""
 
 SCENE_UNDERSTANDING_USER_PROMPT = """Analyze this image primarily to help the user understand and safely move through the space - not to catalog every object.
 
@@ -83,6 +93,26 @@ OCR_CLASSIFICATION_USER_PROMPT_TEMPLATE = """Identify what kind of document or i
 
 Extracted text:
 \"\"\"{extracted_text}\"\"\""""
+
+# ---------------------------------------------------------------------------
+# Content moderation - a narrow, explicit check run once per uploaded image
+# (not per feature), gating all four features. Only the categories listed
+# below are checked, and the prompt explicitly tells the model what NOT to
+# flag, so this stays distinct from Gemini's declarative safety_settings
+# (which was unreliable both directions - rejecting valid requests outright,
+# and separately not catching real explicit/suggestive content).
+# ---------------------------------------------------------------------------
+
+CONTENT_MODERATION_SYSTEM_PROMPT = """You are a content moderation classifier for a public-facing accessibility app used by visually impaired people. Your only job is to flag clearly inappropriate images - you are not analyzing the scene otherwise."""
+
+CONTENT_MODERATION_USER_PROMPT = """Classify this image. Flag it as inappropriate if it clearly contains any of these:
+1. Nudity or partial nudity - any exposed breasts, buttocks, or genitals - or people wearing bikinis, swimwear, underwear, or lingerie.
+2. Sexually suggestive content - intimate poses, people lying together in bed, or a sexual/romantic context involving revealing clothing or bodies.
+3. Graphic violence or gore.
+4. A weapon (gun, knife, bomb, or similar) being brandished or used to threaten or harm someone.
+5. Explicit hate symbols or hate speech.
+
+Do NOT flag: ordinary photos of fully, normally clothed people doing everyday things, movie/TV/concert/celebrity posters and promotional images (as long as the people in them are normally dressed), ordinary household objects like kitchen knives or tools, or vehicles. If you are genuinely uncertain whether clothing/context crosses into category 1 or 2 above, flag it - for this app, missing borderline content is a worse outcome than an occasional false positive."""
 
 # ---------------------------------------------------------------------------
 # Personalized Assistance - unchanged; kept as a single combined prompt since

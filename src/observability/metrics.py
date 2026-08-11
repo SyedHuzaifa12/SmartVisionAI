@@ -31,6 +31,8 @@ class PipelineMetrics:
     stages: list[StageTiming] = field(default_factory=list)
     validation_passed: bool = True
     retried: bool = False
+    error_detail: str | None = None
+    """The underlying exception/validation failure, when validation_passed is False."""
 
     @property
     def total_latency_ms(self) -> float:

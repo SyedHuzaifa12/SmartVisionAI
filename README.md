@@ -29,11 +29,14 @@ Visually impaired users struggle with understanding surroundings, reading printe
 | 🎯 **Object Detection** | Same structured analysis, weighted toward precisely identifying and positioning individual objects/hazards rather than narrating the scene. |
 | 📝 **OCR Text Extraction** | Reads printed/digital text via Tesseract OCR (with a measured confidence score), then classifies it (medicine label, business card, signboard, menu, document, book page, product packaging). |
 | 💬 **Personalized Assistance** | Provides context-specific, assistive guidance for a document, label, or item. |
-| 🔊 **Audio Summary** | Every feature speaks a concise, purpose-built narration aloud via `pyttsx3` — not a raw dump of the on-screen text. |
+| 🔊 **Audio Summary** | Every feature speaks a concise, purpose-built narration aloud via `gTTS` — not a raw dump of the on-screen text. |
 | 🛡️ **Guardrails** *(internal)* | Every structured response is validated, retried once if malformed, and replaced with a safe fallback if it still fails - never surfaced to the user as an error unless truly unrecoverable. |
+| 🚫 **Content moderation** *(internal)* | A narrow, explicit check (real nudity, graphic violence, brandished weapons, hate symbols) gates every image once, before any feature runs - fails open on its own technical errors so it never blocks an ordinary photo. |
 | 📊 **Confidence gating** *(internal)* | Low-confidence scene/hazard responses degrade gracefully instead of asserting false certainty; hazard verdicts fail toward caution, never toward false reassurance. |
 | ⏱️ **Pipeline Metrics** *(dev panel)* | Per-stage latency, model name, and validation status, shown in a collapsible panel below each result. |
 | 🧪 **AI Evaluation** *(dev panel)* | Rule-based completeness/safety/navigation/OCR-usefulness/overall scores for every response, shown in a collapsible panel - development signal only, never the primary answer. |
+| ⚡ **Response caching** *(internal)* | Identical (feature, image) requests skip Gemini entirely after the first time - across all visitors, not just one session. |
+| 🚦 **Rate limiting** *(internal)* | Caps requests per browser session (default 5/hour) to protect the shared free-tier API key from rapid repeated clicks. |
 
 ---
 
@@ -89,7 +92,7 @@ Visually impaired users struggle with understanding surroundings, reading printe
              │
              ▼
 ┌──────────────────────────┐
-│  Text-to-Speech             │  src/speech/tts.py (pyttsx3)
+│  Text-to-Speech             │  src/speech/tts.py (gTTS)
 └────────────┬───────────────┘
              ▼
   Rendered as: Scene Summary → Environment Type → Important Objects →
@@ -145,7 +148,19 @@ This project's prompts have gone through four real iterations (documented in ful
 
 ## 🛡️ Guardrails
 
-Every structured LLM call goes through one shared middleware (`src/guardrails/validation.py`), not scattered per-feature checks:
+Guardrails apply on both sides of the pipeline - what the user sends in, and what the model sends back.
+
+**Input validation** (`src/utils/image_utils.py:validate_uploaded_image`), applied before an uploaded file touches OCR or Gemini:
+- **Size limit** (default 10 MB) - rejects oversized uploads with a clear message rather than the app default's generous, unbounded ceiling.
+- **Corruption check** - `Image.open()` is lazy in PIL; it doesn't fully decode until pixel data is accessed. This forces a full `.load()` immediately, so a truncated or non-image file (or one merely renamed to `.jpg`) fails fast with "this file isn't a valid, readable image" instead of crashing deep in the pipeline with a raw traceback.
+- **Dimension limit** (default 6000px on the longest side) - blocks pathologically large images that would otherwise burn excessive memory, latency, and API cost for no benefit.
+
+**Content safety - two layers, for different reasons:**
+
+- Gemini's declarative `safety_settings` (`src/llm/vision_client.py`) is still set - all 4 generic categories at `BLOCK_ONLY_HIGH`, the least strict level - but is *not* relied on as the primary gate anymore. In testing, this mechanism was caught twice: first rejecting every request outright with a `400 INVALID_ARGUMENT` (the `HARM_CATEGORY_IMAGE_*` enum values are valid in the Python library but not accepted by the actual API - a real bug, not a guess, confirmed via the error surfaced in `PipelineMetrics.error_detail`), and second, even after removing those, not reliably flagging real explicit content at any threshold tested. A safety mechanism that's an opaque black box - one you can't verify is actually doing anything - isn't a safety mechanism you can rely on.
+- The actual gate is an explicit, narrow **content moderation check this app owns end to end** (`src/llm/vision_client.py:check_content_moderation`, schema `ContentModerationResult`): one small Gemini call with a tightly-scoped prompt that flags nudity/partial nudity, bikinis/swimwear/underwear/lingerie, sexually suggestive content, graphic violence/gore, a weapon being brandished to threaten or harm, and explicit hate symbols/speech - while explicitly telling the model what *not* to flag (ordinary, fully/normally clothed photos of people, posters, kitchen knives, vehicles). The threshold for what counts as "suggestive enough to flag" was widened after testing showed the first version let through bikini photos and an intimate underwear scene - a good example of iterating a prompt against real observed failures rather than shipping the first version untested. It runs once per unique image (cached, not once per feature click) and gates all 4 features from one shared call site in `app.py`. Unlike the hazard-detection fallback (which fails toward Caution), this check **fails open**: if the moderation call itself can't be verified after a retry, the image is treated as fine - a technical glitch in a side-check should never block a normal photo. If Gemini's declarative filter still blocks a request for some other reason, the existing generate → retry → fallback path (below) already catches that as a failure and degrades gracefully.
+
+**Output validation**: every structured LLM call goes through one shared middleware (`src/guardrails/validation.py`), not scattered per-feature checks:
 
 ```
 generate → validate → (if invalid) retry once → (if still invalid) safe fallback
@@ -153,7 +168,7 @@ generate → validate → (if invalid) retry once → (if still invalid) safe fa
 
 Validation checks: required fields are non-empty and meaningful (not just present), `hazard_level` is one of the three allowed values, and — the one deliberately conditional rule — a `"Dangerous"` verdict with zero identified objects is rejected as internally inconsistent, while a `"Safe"` scene with an empty object list is accepted (a real empty field is not the same as a missing one; a blanket "object list must never be empty" rule would misfire on ordinary safe scenes with nothing notable to report).
 
-An exception raised during generation (a transient API error, or output so malformed even structured-output coercion fails) is treated the same as a failed validation - it triggers the same retry-then-fallback path rather than crashing the feature.
+An exception raised during generation (a transient API error, or output so malformed even structured-output coercion fails) is treated the same as a failed validation - it triggers the same retry-then-fallback path rather than crashing the feature. The retry waits a short backoff (2s) first, in case the cause was transient (e.g. a rate-limit blip). Critically, the *actual* exception (type + message) is captured and surfaced through `PipelineMetrics.error_detail` all the way to the Pipeline Metrics dev panel - without this, a rate-limit error, a Gemini safety block, and a genuine bug all produced the identical generic fallback text, making the real cause undiagnosable from the UI. Every fallback is now a debuggable event, not a dead end.
 
 The fallback itself is intentionally conservative: it defaults `hazard_level` to `"Caution"`, never `"Safe"` - when the system can't verify its own output, failing toward caution is the only acceptable direction for a safety-relevant tool.
 
@@ -173,6 +188,8 @@ Gating (`src/guardrails/confidence.py`):
 - OCR confidence below threshold → the extracted text is still shown (partial OCR is often still useful, unlike a wrong hazard call) but with a visible "may be inaccurate, consider retaking" warning banner.
 
 **Known limitation, stated honestly:** an LLM's self-reported confidence is a heuristic proxy, not a calibrated probability - there is no ground-truth accuracy guarantee behind "0.82". Mitigating that is exactly why hazard-confidence gating fails toward caution instead of trusting the number at face value, and why OCR uses a real measured signal instead of an LLM guess wherever one is available.
+
+**A concrete finding from testing this, not a hypothetical:** the first version of the confidence instruction ("be conservative, don't default high") had no calibration anchor, and in practice the model reported `scene_confidence`/`hazard_confidence` near **0%** even for clear, well-lit, unambiguous photos - a signal that's useless to threshold against isn't a signal at all. Two changes followed: the prompt now gives the model concrete anchor points (a clear photo should score 0.8-1.0; only genuinely blurry/dark/ambiguous images should score low), and - since a prompt tweak alone isn't something to trust without measurement - **gating on these two fields defaults to off** (`SCENE_CONFIDENCE_THRESHOLD`/`HAZARD_CONFIDENCE_THRESHOLD` default to `0.0`, which can mathematically never trigger). The raw values are still computed and shown on every response for transparency; the thresholds are there to raise once the improved calibration is actually verified against real traffic, not before. Shipping a broken gate that rejects good input is worse than shipping an honest, visible number with no gate yet.
 
 ---
 
@@ -211,6 +228,22 @@ A few choices worth explaining if asked about them directly:
 - **Why does the confidence gate fail toward Caution instead of hiding the hazard field entirely?** Silently omitting a hazard assessment is worse than an uncertain one for an accessibility tool - the user still needs *some* guidance. Escalating (never downgrading) preserves that while refusing to assert false certainty.
 - **Why keep all 4 original buttons instead of merging Scene Understanding and Object Detection?** They now share one schema and one system prompt, differing only in the user-prompt "focus," which is exactly the DRY outcome you'd want - without removing a feature the existing app already promised.
 - **Why is Personalized Assistance the one feature *not* touched by guardrails/confidence/evaluation?** It returns free text, not the `SceneAnalysis` schema, and serves a different purpose (interpreting one held item, not hazard/navigation judgment) - forcing it into the same schema would be scope creep, not consistency.
+- **Why is rate limiting per-session instead of per-device?** Streamlit Cloud gives no stable per-visitor identity without a backend/database, which is explicitly out of scope here. A per-session limit is honest about what it actually enforces (a new tab resets it) rather than pretending to a guarantee it can't provide.
+- **Why doesn't a cache hit skip the rate limit?** They're deliberately independent: the limiter answers "how many times can this session trigger the pipeline," the cache separately answers "how many of those actually call Gemini." Coupling them (exempting cache hits from the count) saves a little API load at the cost of real complexity, for a portfolio-scale demo where that tradeoff isn't worth it.
+- **A real incident, not a hypothetical:** an earlier version of the safety settings included `HARM_CATEGORY_IMAGE_*` variants - valid enum members in the `langchain-google-genai` Python library, but rejected by the actual Gemini REST API with a `400 INVALID_ARGUMENT`. Every single request failed, regardless of image content, which looked identical to "guardrails being too strict" from the outside - you cannot tell "the model refused this" apart from "the request itself was malformed" without seeing the underlying error. That ambiguity is exactly why `PipelineMetrics.error_detail` (see Guardrails/Observability above) exists: it turned a multi-round guessing exercise into a one-line diagnosis. The fix was removing the four `IMAGE_*` entries and keeping only the four generic categories, which already cover multimodal (image+text) requests.
+
+---
+
+## 🚦 Caching & Rate Limiting
+
+Two lightweight production-hardening measures, both intentionally simple rather than backed by a database:
+
+- **Response caching** (`src/utils/response_cache.py`) - a bounded (LRU, 128-entry), thread-safe, in-process cache keyed on `(feature, image)`. If any visitor has already run the same feature on the same image, every subsequent request for that exact pair - from any session - returns instantly with **zero additional Gemini calls**. Hit/miss is returned explicitly (not hidden inside a framework), so the Pipeline Metrics panel can honestly say "served from cache" instead of showing stale latency numbers as if they were freshly measured.
+- **Rate limiting** (`src/utils/rate_limiter.py`) - a sliding-window limit (default: 5 requests/hour, configurable via `RATE_LIMIT_MAX_REQUESTS` / `RATE_LIMIT_WINDOW_SECONDS`) tracked in `st.session_state`. This protects a shared, free-tier API key from rapid repeated clicks within one browser session.
+
+Both are plain, framework-independent Python (the rate limiter takes any dict-like `session_state`, real or a test double) and fully unit-tested without needing Streamlit, a network call, or a database - consistent with the rest of `src/`.
+
+**Honest scope limits, stated directly:** the cache is in-memory only (cleared on every redeploy) and the rate limit is per-browser-session, not per-device or per-IP. Both are correctly described as *lightweight demo-scale safeguards*, not the persistent, distributed versions a real production system with sustained traffic would need (Redis-backed cache, IP- or auth-based limiting). That's an appropriate scope for this project, not a gap to apologize for.
 
 ---
 
@@ -233,7 +266,7 @@ SmartVisionAI/
 ├── src/
 │   ├── llm/                    # Gemini vision-language model integration
 │   │   ├── vision_client.py    # Prompt/image -> Gemini call (plain text and structured)
-│   │   └── schemas.py          # SceneAnalysis / OcrClassification / ResponseEvaluation schemas
+│   │   └── schemas.py          # SceneAnalysis / OcrClassification / ContentModerationResult / ResponseEvaluation
 │   ├── ocr/                    # Tesseract OCR text extraction (with measured confidence)
 │   │   └── extractor.py
 │   ├── speech/                 # Text-to-speech synthesis
@@ -251,7 +284,7 @@ SmartVisionAI/
 │   │   └── vision_assistant.py   # composes LLM + guardrails + confidence + metrics + eval
 │   ├── ui/                      # Streamlit branding/presentation components
 │   │   └── branding.py
-│   └── utils/                   # Shared helpers (image <-> base64 encoding)
+│   └── utils/                   # Shared helpers (image <-> base64, response cache, rate limiter)
 │       └── image_utils.py
 │
 ├── tests/                       # Unit + integration tests (pytest)
@@ -272,7 +305,7 @@ Each `src/` subpackage owns a single responsibility, so a component (say, swappi
 - **Google Gemini** (`gemini-flash-latest` by default) via **LangChain** — scene understanding, object detection, personalized assistance, OCR classification, all via `with_structured_output` where structured
 - **Pydantic** — structured-output schemas, field-level validation constraints (`ge`/`le` on scores and confidences)
 - **Tesseract OCR** (`pytesseract`) — text extraction with measured word-level confidence
-- **pyttsx3** — offline text-to-speech
+- **gTTS** — text-to-speech (Google Translate TTS endpoint, no API key required)
 - **python-dotenv** — environment-based configuration
 - **pytest** — unit and integration testing (Gemini/OCR calls mocked in service-layer tests)
 

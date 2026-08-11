@@ -117,6 +117,34 @@ class OcrClassification(BaseModel):
     )
 
 
+class ContentModerationResult(BaseModel):
+    """A narrow, explicit content-safety classification for an uploaded image.
+
+    Deliberately not delegated to Gemini's built-in ``safety_settings`` alone
+    - that mechanism has already been caught both rejecting valid requests
+    outright (invalid enum values for this API version) and, separately,
+    not reliably flagging real explicit content at any threshold tested.
+    This is a plain, explicit, tunable check we own end to end.
+    """
+
+    is_inappropriate: bool = Field(
+        description=(
+            "True if the image contains: nudity or partial nudity (exposed breasts, buttocks, or "
+            "genitals), people in bikinis/swimwear/underwear/lingerie, sexually suggestive content or "
+            "intimate poses/context; graphic violence or gore; a weapon (gun, knife, bomb, or similar) "
+            "being brandished or used to threaten or harm; or explicit hate symbols/speech. False for "
+            "ordinary photos of fully, normally clothed people doing everyday things, movie/concert "
+            "posters and promotional images (normally dressed), ordinary objects like kitchen knives "
+            "or tools, and vehicles. When genuinely uncertain whether clothing/context crosses into "
+            "the nudity/suggestive categories, prefer True - for this app, missing borderline content "
+            "is a worse outcome than an occasional false positive."
+        )
+    )
+    reason: str = Field(
+        description="One short phrase for the classification, e.g. 'contains explicit nudity' or 'ordinary photo, no concerns'."
+    )
+
+
 class ResponseEvaluation(BaseModel):
     """Development/demo-only quality scoring for a generated response.
 

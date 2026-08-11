@@ -20,14 +20,16 @@ from config import settings
 from src.evaluation.response_evaluator import evaluate_ocr_result, evaluate_scene_analysis
 from src.guardrails.confidence import apply_confidence_gate
 from src.guardrails.validation import (
+    fallback_content_moderation,
     fallback_ocr_classification,
     fallback_scene_analysis,
     run_with_guardrails,
+    validate_content_moderation,
     validate_ocr_classification,
     validate_scene_analysis,
 )
-from src.llm.schemas import OcrClassification, ResponseEvaluation, SceneAnalysis
-from src.llm.vision_client import analyze_scene, classify_extracted_text, run_vision_prompt
+from src.llm.schemas import ContentModerationResult, OcrClassification, ResponseEvaluation, SceneAnalysis
+from src.llm.vision_client import analyze_scene, check_content_moderation, classify_extracted_text, run_vision_prompt
 from src.observability.metrics import PipelineMetrics, StageTiming, timed_stage
 from src.ocr.extractor import extract_text_with_confidence
 from src.prompts.vision_prompts import (
@@ -57,6 +59,24 @@ class FeatureResult:
     evaluation: ResponseEvaluation | None
 
 
+def moderate_image(image_base64: str) -> ContentModerationResult:
+    """Check whether an image contains explicit/severe content, gating all 4 features.
+
+    Runs once per unique image (callers should cache on image_base64 alone,
+    not per-feature) rather than being duplicated inside every feature
+    function. Fails open: if the check itself can't be verified after a
+    retry, the image is treated as not inappropriate - a technical glitch in
+    this side-check should never block an ordinary image.
+    """
+    guardrail = run_with_guardrails(
+        lambda: check_content_moderation(image_base64),
+        validate_content_moderation,
+        fallback_content_moderation,
+        label="Content Moderation",
+    )
+    return guardrail.value
+
+
 def describe_scene(image_base64: str) -> FeatureResult:
     """Generate a structured, navigation-focused scene analysis for the uploaded image."""
     stages: list[StageTiming] = []
@@ -78,6 +98,7 @@ def describe_scene(image_base64: str) -> FeatureResult:
         stages=stages,
         validation_passed=guardrail.passed_validation,
         retried=guardrail.retried,
+        error_detail=guardrail.error_detail,
     )
     return FeatureResult(data=analysis, metrics=metrics, evaluation=evaluate_scene_analysis(analysis))
 
@@ -103,6 +124,7 @@ def detect_objects(image_base64: str) -> FeatureResult:
         stages=stages,
         validation_passed=guardrail.passed_validation,
         retried=guardrail.retried,
+        error_detail=guardrail.error_detail,
     )
     return FeatureResult(data=analysis, metrics=metrics, evaluation=evaluate_scene_analysis(analysis))
 
@@ -121,6 +143,7 @@ def extract_text_from_image(image: Image.Image, image_base64: str) -> FeatureRes
     classification: OcrClassification | None = None
     validation_passed = True
     retried = False
+    error_detail: str | None = None
 
     if text.strip():
         with timed_stage(stages, "ocr_classification_model"):
@@ -133,6 +156,7 @@ def extract_text_from_image(image: Image.Image, image_base64: str) -> FeatureRes
         classification = guardrail.value
         validation_passed = guardrail.passed_validation
         retried = guardrail.retried
+        error_detail = guardrail.error_detail
 
     result = OcrResult(
         text=text,
@@ -145,6 +169,7 @@ def extract_text_from_image(image: Image.Image, image_base64: str) -> FeatureRes
         stages=stages,
         validation_passed=validation_passed,
         retried=retried,
+        error_detail=error_detail,
     )
     evaluation = evaluate_ocr_result(text, ocr_confidence, classification)
     return FeatureResult(data=result, metrics=metrics, evaluation=evaluation)

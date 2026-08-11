@@ -18,9 +18,8 @@ def render_header() -> None:
     """Render the page title and tagline."""
     st.markdown(
         """
-        <h1 style="color: #003366; text-align: center;">SmartVisionAI👁️</h1>
-        <h3 style="color:#4B8BBE;">Transforming Vision with AI 🤖✨</h3>
-        <h3 style="color:#2F4F4F;">Empowering the visually impaired with real-time insights and audio guidance for a more accessible world! </h3>
+        <h1 style="color: #003366; text-align: center;">SmartVisionAI</h1>
+        <h3 style="color:#4B8BBE;">AI-powered scene understanding for the visually impaired</h3>
         """,
         unsafe_allow_html=True,
     )
@@ -35,34 +34,36 @@ def render_sidebar() -> str:
     if LOGO_PATH.exists():
         st.sidebar.image(str(LOGO_PATH), width=250)
 
-    st.sidebar.title("💼 About SmartVisionAI")
+    st.sidebar.title("About SmartVisionAI")
     st.sidebar.markdown(
         """
-        📌 **Features**:
-        - 📸 **Scene Understanding**: Navigation-focused scene summary, environment type, key objects, and a Safe/Caution/Dangerous hazard rating.
-        - 📝 **Extract Text**: OCR text extraction with automatic category detection (medicine label, menu, signboard, etc.).
-        - 🔍 **Object Detection**: Prioritized, position-aware objects and hazards for safe navigation.
-        - 💬 **Personalized Assistance**: Context-specific help understanding a document, label, or item.
-        - 🔊 Every result includes a spoken audio summary.
+        **Features**
+        - **Scene Understanding** - navigation-focused scene summary, environment type, key objects, and a Safe/Caution/Dangerous hazard rating.
+        - **Extract Text** - OCR text extraction with automatic category detection (medicine label, menu, signboard, etc.).
+        - **Object Detection** - prioritized, position-aware objects and hazards for safe navigation.
+        - **Personalized Assistance** - context-specific help understanding a document, label, or item.
 
-        🌟 **How it helps**:
+        Every result includes a spoken audio summary.
+
+        **How it helps**
+
         Assists visually impaired users by describing scenes, assessing hazards, extracting and classifying text, detecting objects, and providing spoken guidance throughout.
 
-        🤖 **Powered by**:
-        - **Google Gemini API** for scene analysis.
-        - **LangChain** for integrating AI.
-        - **Tesseract OCR** for text recognition.
-        - **pyttsx3** for speech synthesis.
-        - **Streamlit** for enhanced UI.
+        **Powered by**
+        - Google Gemini API for scene analysis
+        - LangChain for AI integration
+        - Tesseract OCR for text recognition
+        - gTTS for speech synthesis
+        - Streamlit for the UI
         """
     )
     st.sidebar.text_area(
-        "🎯 Instructions(how it works)",
-        "1. Select a functionality. 2. Upload an image. 3. Click on the button to generate.",
+        "Instructions (how it works)",
+        "1. Select a feature. 2. Upload an image. 3. Click the button to generate a result.",
     )
 
     return st.sidebar.radio(
-        "### **Select a Feature ⚙️:**",
+        "Select a feature",
         FEATURE_OPTIONS,
         index=0,
     )
@@ -74,7 +75,7 @@ def render_footer() -> None:
         """
         <hr>
         <footer style="text-align:left;">
-            <p>Powered by <strong>Google Gemini API,LangChain,Streamlit </strong> | Syed Huzaifa ❤️</p>
+            <p>Powered by <strong>Google Gemini API, LangChain, Streamlit</strong> &middot; Built by Syed Huzaifa</p>
         </footer>
         """,
         unsafe_allow_html=True,

@@ -1,7 +1,7 @@
 # Core application
 streamlit>=1.32
 Pillow>=10.0
-pyttsx3>=2.90
+gTTS>=2.5.0
 pytesseract>=0.3.10
 python-dotenv>=1.0.0
 
