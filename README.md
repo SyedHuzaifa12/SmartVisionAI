@@ -10,7 +10,7 @@ SmartVisionAI is a Streamlit application that analyzes an uploaded image and, on
 
 - 🖼 Describe the scene with a navigation-focused summary, environment classification, and prioritized objects
 - 🚦 Assess hazards and classify overall safety as **Safe / Caution / Dangerous**, with an evidence-based explanation
-- 📝 Extract printed/digital text via OCR and classify what kind of text it is (label, menu, sign, document, etc.)
+- 📝 Extract printed/digital text via OCR and classify what kind of text it is (label, menu, sign, document, etc..)
 - 🎯 Detect and prioritize objects relevant to safe navigation, with left/right/front/behind positioning
 - 💬 Provide context-specific assistive guidance for a document, label, or item
 - 🔊 Speak every result aloud as a concise audio summary
