@@ -170,7 +170,7 @@ def main() -> None:
         return
 
     image = Image.open(uploaded_image)
-    st.image(image, caption="Uploaded Image 📷", use_column_width=True)
+    st.image(image, caption="Uploaded Image 📷", use_container_width=True)
     image_base64 = image_to_base64(image)
 
     if feature == "Real-Time Scene Understanding" and st.button(
