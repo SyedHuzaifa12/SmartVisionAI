@@ -32,7 +32,7 @@ Visually impaired users struggle with understanding surroundings, reading printe
 | 🔊 **Audio Summary** | Every feature speaks a concise, purpose-built narration aloud via `gTTS` — not a raw dump of the on-screen text. |
 | 🛡️ **Guardrails** *(internal)* | Every structured response is validated, retried once if malformed, and replaced with a safe fallback if it still fails - never surfaced to the user as an error unless truly unrecoverable. |
 | 🚫 **Content moderation** *(internal)* | A narrow, explicit check (real nudity, graphic violence, brandished weapons, hate symbols) gates every image once, before any feature runs - fails open on its own technical errors so it never blocks an ordinary photo. |
-| 📊 **Confidence gating** *(internal)* | Low-confidence scene/hazard responses degrade gracefully instead of asserting false certainty; hazard verdicts fail toward caution, never toward false reassurance. |
+| 📊 **Confidence gating** *(internal)* | Low-confidence scene/hazard responses degrade gracefully instead of asserting false certainty; hazard verdicts fail toward caution, never toward false reassurance.  |
 | ⏱️ **Pipeline Metrics** *(dev panel)* | Per-stage latency, model name, and validation status, shown in a collapsible panel below each result. |
 | 🧪 **AI Evaluation** *(dev panel)* | Rule-based completeness/safety/navigation/OCR-usefulness/overall scores for every response, shown in a collapsible panel - development signal only, never the primary answer. |
 | ⚡ **Response caching** *(internal)* | Identical (feature, image) requests skip Gemini entirely after the first time - across all visitors, not just one session. |
