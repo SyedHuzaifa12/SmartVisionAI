@@ -25,7 +25,7 @@ Visually impaired users struggle with understanding surroundings, reading printe
 
 | Feature | Description |
 |---|---|
-| 📸 **Scene Understanding** | Structured, navigation-focused analysis: scene summary, environment type, prioritized objects with position, and a Safe/Caution/Dangerous hazard rating with an evidence-based explanation. |
+| 📸 **Scene Understanding** | Structured, navigation-focused analysis: scene summary, environment type, prioritized objects with position, and a Safe/Caution/Dangerous hazard rating with an evidence-based explanation. | 
 | 🎯 **Object Detection** | Same structured analysis, weighted toward precisely identifying and positioning individual objects/hazards rather than narrating the scene. |
 | 📝 **OCR Text Extraction** | Reads printed/digital text via Tesseract OCR (with a measured confidence score), then classifies it (medicine label, business card, signboard, menu, document, book page, product packaging). |
 | 💬 **Personalized Assistance** | Provides context-specific, assistive guidance for a document, label, or item. |
