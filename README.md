@@ -19,7 +19,7 @@ Underneath those four features is a small but real AI engineering pipeline: ever
 
 Visually impaired users struggle with understanding surroundings, reading printed text, identifying objects, interpreting visual cues, and assessing whether a space is safe to move through. SmartVisionAI turns an image  into **structured, spoken, contextual knowledge**, letting users interact with visual content more independently. 
 
----
+--- 
 
 ## ✨ Features
 
