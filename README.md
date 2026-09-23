@@ -17,7 +17,7 @@ SmartVisionAI is a Streamlit application that analyzes an uploaded image and, on
 
 Underneath those four features is a small but real AI engineering pipeline: every Gemini response is schema-validated and retried before it's trusted, every response carries a self-reported confidence that gates whether it's shown as-is, every hazard verdict comes with an evidence-only explanation, and every request is timed and scored for internal QA. None of that is visible as a "feature" in the UI - it's the difference between calling an LLM API and engineering around one.
 
-Visually impaired users struggle with understanding surroundings, reading printed text, identifying objects, interpreting visual cues, and assessing whether a space is safe to move through. SmartVisionAI turns an image  into **structured, spoken, contextual knowledge**, letting users interact with visual content more independently.
+Visually impaired users struggle with understanding surroundings, reading printed text, identifying objects, interpreting visual cues, and assessing whether a space is safe to move through. SmartVisionAI turns an image  into **structured, spoken, contextual knowledge**, letting users interact with visual content more independently. 
 
 ---
 
