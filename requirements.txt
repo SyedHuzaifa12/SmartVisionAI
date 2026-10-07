@@ -8,7 +8,7 @@ python-dotenv>=1.0.0
 # LLM integration (Google Gemini via LangChain)
 langchain-core>=0.2.0
 langchain-google-genai>=1.0.0
-pydantic>=2.0
+pydantic>=2.0 
 
 # Testing (dev dependency)
 pytest>=7.4
