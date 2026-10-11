@@ -22,7 +22,7 @@ Visually impaired users struggle with understanding surroundings, reading printe
 --- 
 
 ## ✨ Features
-
+ 
 | Feature | Description |
 |---|---|
 | 📸 **Scene Understanding** | Structured, navigation-focused analysis: scene summary, environment type, prioritized objects with position, and a Safe/Caution/Dangerous hazard rating with an evidence-based explanation. | 
