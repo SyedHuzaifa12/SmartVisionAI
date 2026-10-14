@@ -1,6 +1,6 @@
 # 👁️ SmartVisionAI
 
-An AI-powered assistive vision platform that helps visually impaired individuals understand images — converting visual information into descriptive text, extracted text, object insights, and spoken audio output, built with the guardrails, confidence estimation, and observability a production AI system needs.
+An AI-powered assistive vision platform that helps visually impaired individuals understand images — converting visual information into descriptive text,  extracted text, object insights, and spoken audio output, built with the guardrails, confidence estimation, and observability a production AI system needs.
 
 ---
 
